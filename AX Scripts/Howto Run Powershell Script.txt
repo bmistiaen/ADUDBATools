@@ -1,0 +1,5 @@
+Execute this in powershell:
+Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser -Confirm
+
+Then run your script:
+.\myScript.ps1
