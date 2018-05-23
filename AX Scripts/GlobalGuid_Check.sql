@@ -7,26 +7,45 @@
 -- Explanation here: http://daxmusings.codecrib.com/2013/01/fixing-code-caching-on-ax-environment.html
 -- =============================================
 
-IF OBJECT_ID('tempdb..#GlobalGuid') IS NOT NULL
-	DROP TABLE dbo.#GlobalGuid
 
-CREATE TABLE dbo.#GlobalGuid
+IF OBJECT_ID('tempdb..#GlobalGuid') IS NOT NULL
+	DROP TABLE #GlobalGuid
+
+CREATE TABLE #GlobalGuid
 	(
-	DBName varchar(40),
+	DBName varchar(50),
 	GlobalGuid uniqueidentifier
 	)
 
-DECLARE @command varchar(1000) 
-SELECT @command = 'USE ?; 
-	IF EXISTS(SELECT NULL FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ''SYSSQMSETTINGS'') 
-		BEGIN 
-			INSERT INTO dbo.#GlobalGuid (DBName, GlobalGuid) 
-			SELECT DB_NAME(), globalguid from SYSSQMSETTINGS 
-		END;'
-EXEC sp_MSforeachdb @command 
+DECLARE @TableName NVARCHAR(50) 
+SELECT @TableName = '[dbo].[SYSSQMSETTINGS]'
 
-SELECT DBName as [DBName (Sorted)], GlobalGuid FROM dbo.#GlobalGuid ORDER BY 1
-SELECT DBName, GlobalGuid as [GlobalGuid (Sorted)] FROM dbo.#GlobalGuid ORDER BY 2
+DECLARE @SQL NVARCHAR(MAX)
+SELECT @SQL = STUFF((
+    SELECT CHAR(13) + 'SELECT ''' + name + ''' as DB, GLOBALGUID FROM [' + name + '].' + @TableName 
+    FROM sys.databases 
+    WHERE OBJECT_ID(name + '.' + @TableName) IS NOT NULL
+    FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 1, '')
+
+PRINT @SQL
+
+INSERT INTO #GlobalGuid (DBName, GlobalGuid)              
+EXEC sys.sp_executesql @SQL
+
+SELECT a.DBName, a.GlobalGuid as [GlobalGuid (Duplicates)]
+FROM #GlobalGuid a
+CROSS JOIN #GlobalGuid b
+WHERE a.DBName <> b.DBName
+AND a.GlobalGuid = b.GlobalGuid
+
+IF @@ROWCOUNT <> 0
+	SELECT 'Yes' AS [Duplicates found]
+ELSE
+	SELECT 'No' AS [Duplicates found]
+
+SELECT DBName as [DBName (Sorted)], GlobalGuid FROM #GlobalGuid ORDER BY 1
+SELECT DBName, GlobalGuid as [GlobalGuid (Sorted)] FROM #GlobalGuid ORDER BY 2
+
 
 IF OBJECT_ID('tempdb..#GlobalGuid') IS NOT NULL
-	DROP TABLE dbo.#GlobalGuid
+	DROP TABLE #GlobalGuid
